@@ -9,6 +9,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    volumes:
+      - mdb-data:/data/db
   healthcare:
     build: .
     container_name: healthcare
@@ -17,3 +19,8 @@ services:
         condition: service_healthy
     environment:
       - MDB_URI=mongodb://mongodb:27017/
+
+
+volumes:
+  mdb-data:
+
