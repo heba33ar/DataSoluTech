@@ -1,15 +1,18 @@
+import os
 from pymongo import MongoClient
 import pandas as pd
 import datetime as dt
 
-client = MongoClient("mongodb://localhost:27017/")
+uri = os.environ.get("MDB_URI", "mongodb://localhost:27017/")
+client = MongoClient(uri)
 df = pd.read_csv("healthcare_dataset.csv")
 
 
 #connect to MongoDB and create a database
 def connect_to_mongodb(client):
     db = client["healthcare_db"]
-    db.drop_collection("patients")
+    if "patients" in db.list_collection_names():
+        db.drop_collection("patients")
     return db
 
 #create a collection for patients with target types

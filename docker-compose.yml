@@ -1,0 +1,19 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  healthcare:
+    build: .
+    container_name: healthcare
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      - MDB_URI=mongodb://mongodb:27017/
