@@ -11,6 +11,8 @@ services:
       retries: 5
     volumes:
       - mdb-data:/data/db
+    networks:
+      - healthcare_network
   healthcare:
     build: .
     container_name: healthcare
@@ -23,9 +25,18 @@ services:
       - KAGGLE_KEY=${KAGGLE_KEY:-}
     volumes:
       - kagglehub-cache:/root/.cache/kagglehub
+    networks:
+      - healthcare_network
 
 
 volumes:
   mdb-data:
   kagglehub-cache:
+
+#the two services reach each other by service name over this network, which is
+#what makes MDB_URI=mongodb://mongodb:27017/ resolve
+networks:
+  healthcare_network:
+    driver: bridge
+    name: healthcare_net
 
