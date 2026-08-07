@@ -19,8 +19,13 @@ services:
         condition: service_healthy
     environment:
       - MDB_URI=mongodb://mongodb:27017/
+      - KAGGLE_USERNAME=${KAGGLE_USERNAME:-}
+      - KAGGLE_KEY=${KAGGLE_KEY:-}
+    volumes:
+      - kagglehub-cache:/root/.cache/kagglehub
 
 
 volumes:
   mdb-data:
+  kagglehub-cache:
 

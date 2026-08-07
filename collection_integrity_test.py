@@ -6,10 +6,12 @@ def test_mongodb_fixture(mongodb):
     assert mongodb.admin.command("ping")["ok"] > 0
 
 
-def test_patients_collection_exists(healthcare_db):
+#the fixture ran the import, this checks the collection really landed on the server
+def test_patients_collection_exists(healthcare_db, patients_collection):
     assert "patients" in healthcare_db.list_collection_names()
 
 
+#the import wrote something rather than silently inserting nothing
 def test_patients_collection_has_documents(patients_collection):
     assert patients_collection.count_documents({}) > 0
 
@@ -17,27 +19,12 @@ def test_patients_collection_has_documents(patients_collection):
 def test_column_number(df, patients_collection):
     assert len(df.columns) == len(list(patients_collection.find_one().keys()))-1
 
+#every row made it in, nothing dropped by the validator
 def test_document_count(df, patients_collection):
     assert len(df) == patients_collection.count_documents({})
 
-#"properties": {
-                # "Name": {"bsonType": "string"},
-                # "Age": {"bsonType": "int", "minimum": 0, "maximum": 120},
-                # "Gender": {"bsonType": "string", "enum": ["Male", "Female"]},
-                # "Blood Type": {"bsonType": "string", "enum": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]},
-                # "Medical Condition": {"bsonType": "string"},
-                # "Date of Admission": {"bsonType": "string"},
-                # "Doctor": {"bsonType": "string"},
-                # "Hospital": {"bsonType": "string"},
-                # "Insurance Provider": {"bsonType": "string"},
-                # "Billing Amount": {"bsonType": ["double"]},
-                # "Room Number": {"bsonType": "int"},
-                # "Admission Type": {"bsonType": "string"},
-                # "Discharge Date": {"bsonType": "string"},
-                # "Medication": {"bsonType": "string"},
-                # "Test Results": {"bsonType": "string", "enum": ["Normal", "Abnormal", "Inconclusive"]}
 
-#check if valid type
+#check the stored documents match the validator in healthcare.py
 def test_column_types(patients_collection):
     for doc in patients_collection.find():
         assert isinstance(doc["Age"], int)

@@ -1,16 +1,19 @@
 import datetime as dt
-import pandas as pd
 
+#the download returned something usable at all
 def test_dataframe_integrity(df):
     assert df is not None
     assert not df.empty
 
+#guards against Kaggle changing the dataset shape under us
 def test_dataframe_columns(df):
     assert len(df.columns) == 15
 
+#passes because dataset.py drops the 534 duplicates the published file contains
 def test_dataframe_duplicates(df):
     assert df.duplicated().sum() == 0
 
+#no gaps, so every document inserted will satisfy the collection validator
 def test_dataframe_null_values(df):
     assert df.isnull().sum().sum() == 0
 
