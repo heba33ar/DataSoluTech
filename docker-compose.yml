@@ -1,7 +1,13 @@
 services:
+  #the only long-running service, so the only one without a profile
   mongodb:
-    image: mongo:latest
+    image: mongo:7.0
     container_name: mongodb
+    #creating the root account here is what starts mongod with --auth
+    #only applied when the mdb-data volume is empty, see .env.example
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
     ports:
       - "27017:27017"
     healthcheck:
@@ -13,30 +19,68 @@ services:
       - mdb-data:/data/db
     networks:
       - healthcare_network
-  healthcare:
+
+  #pipeline step 1: check the source data before it reaches the database
+  #needs no database at all, only the Kaggle download
+  unit_tests:
     build: .
-    container_name: healthcare
+    profiles:
+      - pipeline
+    volumes:
+      - kagglehub-cache:/root/.cache/kagglehub
+    networks:
+      - healthcare_network
+    command: ["pytest", "df_integrity_test.py", "-q"]
+
+  #pipeline step 2: migrate into MongoDB, only once step 1 exited successfully
+  migrate:
+    build: .
+    profiles:
+      - pipeline
     depends_on:
       mongodb:
         condition: service_healthy
+      unit_tests:
+        condition: service_completed_successfully
     environment:
-      - MDB_URI=mongodb://mongodb:27017/
+      #mongodb is the service name, resolved by Docker DNS on healthcare_network
+      - MONGO_HOST=mongodb:27017
+      - MONGO_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
+      - MONGO_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
       - KAGGLE_USERNAME=${KAGGLE_USERNAME:-}
       - KAGGLE_KEY=${KAGGLE_KEY:-}
     volumes:
       - kagglehub-cache:/root/.cache/kagglehub
     networks:
       - healthcare_network
+    command: ["python", "healthcare.py"]
 
+  #pipeline step 3: check what actually landed in MongoDB, only once step 2 succeeded
+  integrity_tests:
+    build: .
+    profiles:
+      - pipeline
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      - MONGO_HOST=mongodb:27017
+      - MONGO_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
+      - MONGO_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+    volumes:
+      - kagglehub-cache:/root/.cache/kagglehub
+    networks:
+      - healthcare_network
+    command: ["pytest", "collection_integrity_test.py", "-q"]
 
 volumes:
   mdb-data:
+  #keeps the Kaggle download between runs and shares it across the three steps
   kagglehub-cache:
 
-#the two services reach each other by service name over this network, which is
-#what makes MDB_URI=mongodb://mongodb:27017/ resolve
+#the services reach each other by service name over this network, which is what
+#makes MONGO_HOST=mongodb:27017 resolve
 networks:
   healthcare_network:
     driver: bridge
     name: healthcare_net
-

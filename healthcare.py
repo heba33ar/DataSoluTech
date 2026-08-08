@@ -1,13 +1,34 @@
 import os
+from urllib.parse import quote_plus
+
+from dotenv import load_dotenv
 from pymongo import MongoClient
 import pandas as pd
 
 from dataset import load_healthcare_df
 
 
+#build the connection string, credentials come from .env or from the environment
+def build_mongo_uri():
+    load_dotenv()
+    uri = os.environ.get("MDB_URI")
+    if uri:
+        return uri
+    host = os.environ.get("MONGO_HOST", "localhost:27017")
+    user = os.environ.get("MONGO_ROOT_USERNAME")
+    password = os.environ.get("MONGO_ROOT_PASSWORD")
+    if not user or not password:
+        #no credentials configured, target a server started without --auth
+        return f"mongodb://{host}/"
+    #quote_plus escapes @ : / and friends, which would otherwise break the URI
+    #authSource=admin because the user lives in admin, not in healthcare_db
+    return f"mongodb://{quote_plus(user)}:{quote_plus(password)}@{host}/?authSource=admin"
+
+
 #connect to MongoDB and return the database handle
 def connect_to_mongodb(client):
     return client["healthcare_db"]
+
 
 
 #recreate the patients collection with its schema validator, dropping any previous run
@@ -57,8 +78,7 @@ def import_data(collection, df):
 
 #run the full import, guarded so importing this module has no side effects
 def main():
-    uri = os.environ.get("MDB_URI", "mongodb://localhost:27017/")
-    client = MongoClient(uri)
+    client = MongoClient(build_mongo_uri())
     db = connect_to_mongodb(client)
     patients_collection = create_patients_collection(db)
     import_data(patients_collection, load_healthcare_df())

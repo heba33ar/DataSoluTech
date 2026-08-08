@@ -6,7 +6,7 @@ def test_mongodb_fixture(mongodb):
     assert mongodb.admin.command("ping")["ok"] > 0
 
 
-#the fixture ran the import, this checks the collection really landed on the server
+#the migration created the collection, this checks it really landed on the server
 def test_patients_collection_exists(healthcare_db, patients_collection):
     assert "patients" in healthcare_db.list_collection_names()
 

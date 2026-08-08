@@ -1,0 +1,22 @@
+#Docker reads this file, NOT .gitignore. Anything listed here is excluded from the
+#build context, so it is never sent to the Docker daemon and never lands in the image.
+
+#158 MB of macOS-compiled binaries, useless inside a Linux image
+.venv
+
+#secrets. The container receives its credentials from docker-compose environment
+#variables instead. A file copied into an image cannot be un-copied: deleting it in
+#a later layer leaves it readable in the layer history.
+.env
+
+#git history, which would carry anything ever committed
+.git
+.gitignore
+
+#caches that change on every run and would needlessly invalidate the COPY layer
+__pycache__/
+.pytest_cache
+
+#editor and OS noise
+.vscode
+.DS_Store

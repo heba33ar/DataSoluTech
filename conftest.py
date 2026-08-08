@@ -1,17 +1,14 @@
-import os
-
 import pymongo
 import pytest
 
 from dataset import load_healthcare_df
-from healthcare import create_patients_collection, import_data
+from healthcare import build_mongo_uri
 
 
 #one client for the whole test run, fails fast if no server is listening
 @pytest.fixture(scope="session")
 def mongodb():
-    uri = os.environ.get("MDB_URI", "mongodb://localhost:27017/")
-    client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=2000)
+    client = pymongo.MongoClient(build_mongo_uri(), serverSelectionTimeoutMS=2000)
     assert client.admin.command("ping")["ok"] != 0.0
     yield client
     client.close()
@@ -23,14 +20,13 @@ def healthcare_db(mongodb):
     return mongodb["healthcare_db"]
 
 
-#run the import once per session so the suite works on a fresh database, instead of
-#silently depending on healthcare.py having been run by hand first
+#the collection the migration produced. These tests inspect it, they do not rebuild
+#it, so what they check is the real result of running healthcare.py
 @pytest.fixture(scope="session")
-def patients_collection(healthcare_db, df):
-    collection = create_patients_collection(healthcare_db)
-    #pass a copy, import_data rewrites the date columns in place
-    import_data(collection, df.copy())
-    return collection
+def patients_collection(healthcare_db):
+    if "patients" not in healthcare_db.list_collection_names():
+        pytest.fail("collection 'patients' not found, run the migration first: python healthcare.py")
+    return healthcare_db["patients"]
 
 
 #session scope: 55k rows are fetched and deduped once for the whole run
