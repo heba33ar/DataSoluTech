@@ -17,16 +17,19 @@ mongodb (healthy)
     │
     ├─ 1. unit_tests        check the source data          (no database needed)
     │        exit 0
-    ├─ 2. migrate           download, transform, insert
+    ├─ 2. migrate           download, transform, insert, index
     │        exit 0
-    └─ 3. integrity_tests   check what landed in MongoDB
+    └─ 3. integrity_tests   detailed assertions on the stored data
 ```
 
 | Step | What it checks or does |
 |---|---|
 | `unit_tests` | 5 checks on the downloaded DataFrame: not empty, 15 columns, no duplicates, no nulls, correct types and allowed values |
-| `migrate` | Drops and recreates `healthcare_db.patients` with its validator, converts dates, normalises names, inserts 54 966 documents |
-| `integrity_tests` | 6 checks against the live database: collection exists, has documents, field count, document count matches the source, stored types |
+| `migrate` | Creates the roles and accounts, recreates `healthcare_db.patients` with its validator, converts the dates, normalises the names, inserts 54 966 documents, creates the index |
+| `integrity_tests` | 8 checks against the database: collection exists, has documents, field count, document count, index, roles, stored types |
+
+Step 1 checks the data before it is loaded, step 3 checks it after — so a failure tells
+you straight away whether the problem is in the source file or in the migration.
 
 ## Requirements
 
@@ -67,8 +70,11 @@ integrity_tests   | 6 passed
 | `docker compose --profile pipeline run --rm integrity_tests` | Same, for the integrity tests |
 | `docker compose ps -a` | Shows each step and its exit code |
 | `docker compose logs -f <service>` | Follows the logs of one service |
-| `docker compose down` | Stops everything, keeps the data |
-| `docker compose down -v` | Stops everything and deletes the data volume |
+| `docker compose --profile pipeline down -v` | Removes everything, including the data volume |
+
+Pass the profile to `down` as well. A plain `docker compose down` leaves the one-shot
+containers behind, and the next `up` then collides with them. Drop `-v` to keep the
+data and only remove the containers.
 
 `mongodb` has no profile, so a plain `docker compose up -d` starts the database
 alone. The three pipeline steps are one-shot jobs and stay hidden until you pass
@@ -91,7 +97,7 @@ db.patients.findOne()
 
 | File | Role |
 |---|---|
-| `healthcare.py` | Migration script. Builds the connection string, creates the validated collection, transforms and inserts the data |
+| `healthcare.py` | Migration script. Builds the connection string, creates the roles, accounts, validated collection and index, transforms and inserts the data |
 | `dataset.py` | Downloads the dataset from Kaggle into a DataFrame and removes duplicate rows |
 | `conftest.py` | Shared pytest fixtures: MongoDB client, database, collection, source DataFrame |
 | `df_integrity_test.py` | Checks the source data, before migration |
@@ -112,8 +118,9 @@ which is gitignored; `.env.example` documents them.
 |---|---|---|
 | `MONGO_ROOT_USERNAME` | MongoDB root account | `admin` |
 | `MONGO_ROOT_PASSWORD` | Password for that account | none, must be set |
+| `MONGO_APP_PASSWORD` | Shared password for the three role accounts. User creation is skipped if unset | none |
 | `MONGO_HOST` | `host:port` of the server | `localhost:27017` |
-| `MDB_URI` | Full connection string. Overrides the three variables above when set | unset |
+| `MDB_URI` | Full connection string. Overrides the variables above when set | unset |
 
 Docker Compose sets `MONGO_HOST=mongodb:27017` inside the containers, because
 `mongodb` is the service name and resolves over the project's Docker network.
@@ -136,6 +143,33 @@ The database is never exposed without credentials.
   during the handshake.
 - The services communicate over a named Docker network, `healthcare_net`. Only
   containers attached to it can reach the database.
+
+### User roles
+
+The root account is used only to run the migration. Day-to-day access goes through
+three custom roles, each a set of primitive actions scoped to `healthcare_db.patients`,
+and one account per role so each can be demonstrated:
+
+| Role | Can do | Cannot do | Account |
+|---|---|---|---|
+| `patients_reader` | read documents | write anything | `healthcare_reader` |
+| `patients_writer` | read, insert, update | delete, manage indexes | `healthcare_writer` |
+| `patients_admin` | read, write, delete, manage indexes | act outside `patients` | `healthcare_admin` |
+
+The three accounts share `MONGO_APP_PASSWORD` to keep `.env` small; a real deployment
+would give each its own secret. Roles and accounts live at database level, so they
+survive the collection being dropped and recreated on each migration. Both are created
+idempotently: an existing role or account is updated rather than causing a failure.
+
+Connecting as one of them — note `authSource=healthcare_db`, because these accounts
+live in `healthcare_db` rather than in `admin`:
+
+```bash
+mongosh "mongodb://healthcare_reader:<password>@localhost:27017/healthcare_db?authSource=healthcare_db"
+
+db.patients.countDocuments()          # works
+db.patients.insertOne({Name: "X"})    # refused, not authorized
+```
 
 ## Data source
 
@@ -167,8 +201,8 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-python healthcare.py     # run the migration
-pytest                   # run all 11 tests
+python healthcare.py    # run the migration
+pytest                  # run all 13 tests
 ```
 
 `pytest` reads `.env` automatically, so there is nothing to export by hand. The
@@ -183,7 +217,7 @@ the root account when its data directory is empty. Changing `.env` has no effect
 existing volume. Recreate it:
 
 ```bash
-docker compose down -v
+docker compose --profile pipeline down -v
 docker compose --profile pipeline up -d
 ```
 

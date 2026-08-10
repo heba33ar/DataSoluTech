@@ -55,8 +55,24 @@ The repository contains no CSV file. The dataset is downloaded at runtime from K
 
 ## Indexes
 
-No application index is defined yet. Only the default index exists:
+Created after the insert by `create_indexes()`.
 
-| Index | Fields | Type |
+| Index | Field | Purpose |
 |---|---|---|
-| `_id_` | `_id` | unique, created automatically by MongoDB |
+| `_id_` | `_id` | created automatically by MongoDB |
+| `name_idx` | `Name` | search by patient name without reading every document |
+
+## Roles and users
+
+Roles and users belong to the database, not the collection, so they survive the
+collection being dropped on each migration. Each role lists the actions it is allowed
+on `healthcare_db.patients`, and each has one account.
+
+| Role | Actions | Account |
+|---|---|---|
+| `patients_reader` | `find` | `healthcare_reader` |
+| `patients_writer` | `find`, `insert`, `update` | `healthcare_writer` |
+| `patients_admin` | `find`, `insert`, `update`, `remove`, `createIndex`, `dropIndex` | `healthcare_admin` |
+
+`readWrite` and similar names are MongoDB built-in roles, not actions, so they cannot
+be used in the list above.
